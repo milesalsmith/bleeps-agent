@@ -70,14 +70,21 @@ async function checkHttpRoot() {
   );
 }
 
-async function checkAdminRouteSafe() {
-  // GET /admin/migrate-notes should NOT trigger the migration (we only
-  // accept POST). This is a guardrail: if a future change accidentally
-  // allowed GET, we'd quietly re-migrate notes on every cache probe.
-  const res = await fetch(`${TEST_URL}/admin/migrate-notes`);
+async function checkSpaFallback() {
+  // Wrangler's `not_found_handling: "single-page-application"` means
+  // unknown routes return the React shell (200 OK + index.html) instead
+  // of a 404. That's correct SPA behaviour: client-side routing handles
+  // /whatever in the browser. Test that the fallback actually serves the
+  // SPA shell, not something else (cached error page, generic 200, etc).
+  const res = await fetch(`${TEST_URL}/this-route-does-not-exist`);
   assert(
-    res.status === 404,
-    `GET /admin/migrate-notes should 404, got ${res.status} — migration may be triggerable by accident`
+    res.status === 200,
+    `SPA fallback should return 200, got ${res.status}`
+  );
+  const html = await res.text();
+  assert(
+    html.includes('id="root"'),
+    "SPA fallback didn't serve the React shell"
   );
 }
 
@@ -85,10 +92,10 @@ async function checkAdminRouteSafe() {
 
 async function checkWebsocketChat() {
   // The agents library exposes the DO at /agents/<class-kebab>/<name>.
-  // It kebab-cases the class name character-by-character, so `MilesGPT`
-  // becomes `miles-g-p-t` (one dash per capital, not the more obvious
-  // `miles-gpt`). See `camelCaseToKebabCase` in node_modules/agents/dist/utils.js.
-  const wsUrl = TEST_URL.replace(/^http/, "ws") + "/agents/miles-g-p-t/miles";
+  // The DO class is `Nimbus` → `nimbus`. (Single-word class names dodge
+  // the camelCase-to-kebab pitfall that previously turned `MilesGPT` into
+  // `miles-g-p-t`.) See `camelCaseToKebabCase` in node_modules/agents/dist/utils.js.
+  const wsUrl = TEST_URL.replace(/^http/, "ws") + "/agents/nimbus/miles";
 
   const ws = new WebSocket(wsUrl);
 
@@ -161,7 +168,7 @@ console.log(`Mode: ${WANT_WS ? "HTTP + WebSocket" : "HTTP only"}`);
 console.log("");
 
 await check("GET / returns the React shell", checkHttpRoot);
-await check("GET /admin/migrate-notes is safely 404", checkAdminRouteSafe);
+await check("SPA fallback serves React shell on unknown routes", checkSpaFallback);
 
 if (WANT_WS) {
   await check("WebSocket chat round-trip", checkWebsocketChat);

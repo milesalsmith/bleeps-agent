@@ -11,24 +11,30 @@ Personality:
 - Cloudflare-orange-coded: enthusiastic about the developer platform, but never preachy.
 
 How you work:
-- You have a persistent Workspace (a durable filesystem) where Miles's notes live
-  under /notes/*.md. You can read, write, edit, grep, and find inside it using your
-  built-in workspace tools. Use them whenever a question might be answered by
-  something Miles has previously written down.
+- You have a persistent Workspace (a durable filesystem). You can read, write, edit,
+  grep, and find inside it using your built-in workspace tools. Use them whenever a
+  question might be answered by something Miles has previously written down, and
+  use them when he asks you to remember something concrete.
 - You have a MEMORY context block. Whenever you learn something durable about Miles
   (preferences, ongoing projects, names of people he mentions, etc.), call
   set_context to update it. Don't store secrets or anything sensitive.
-- If you don't know something and the notes don't help, say so plainly.`;
+- If you don't know something and the workspace doesn't help, say so plainly.`;
 
 /**
- * MilesGPT — Nimbus, as a Project Think agent.
+ * Nimbus — milesGPT, as a Project Think agent.
  *
  * A single global Durable Object instance (addressed by the name `"miles"`)
  * holds the entire conversation tree, the workspace filesystem, and the
  * persistent memory. There is no per-user routing yet; auth is a Stage 5
  * concern.
+ *
+ * Class history:
+ *  - v1 was `MilesGPT` (Stage 1, pre-clean-slate). Renamed to `Nimbus` on
+ *    clean-slate to wipe accumulated DO state from migration tests and the
+ *    initial smoke-test "ping". The v1 class is removed via the v2 wrangler
+ *    migration's `deleted_classes` entry.
  */
-export class MilesGPT extends Think<Env> {
+export class Nimbus extends Think<Env> {
   // Wrap each turn in a fiber so an isolate eviction mid-stream is recoverable.
   chatRecovery = true;
 
@@ -57,66 +63,34 @@ export class MilesGPT extends Think<Env> {
   }
 
   /**
-   * Public RPC used by the one-off /admin/migrate-notes endpoint to seed
-   * Nimbus's workspace with the legacy D1 notes. Safe to remove once the
-   * migration has been run.
+   * Public RPC used by the test suite to read a workspace file back. Kept
+   * as a small debug hatch — useful for any future testing or admin work
+   * without re-opening the migration code path.
    *
    * The `__unsafe_ensureInitialized()` call is required for any custom RPC
    * that touches Think state (workspace, session, etc.). Without it, calls
    * that arrive before Think's async `onStart` has run see undefined fields
-   * and throw — this caught us in the integration tests.
-   */
-  async importNote(path: string, content: string): Promise<void> {
-    await this.__unsafe_ensureInitialized();
-    await this.workspace.writeFile(path, content);
-  }
-
-  /**
-   * Public RPC used by the test suite to read a workspace file back. Kept
-   * outside `importNote` so it can stay around after the migration is
-   * retired — useful for any future debugging too.
+   * and throw — this caught us in the Stage 1 integration tests.
    */
   async readNote(path: string): Promise<string | null> {
     await this.__unsafe_ensureInitialized();
     return (await this.workspace.readFile(path)) ?? null;
   }
-}
 
-/**
- * One-shot migration: pull every note out of the legacy D1 `notes` table and
- * write it into the Workspace as /notes/<id>.md. Idempotent — re-running
- * overwrites files with the same content.
- *
- * Delete this route (and the DB/VECTOR_INDEX bindings in wrangler.jsonc) once
- * migration has been run successfully.
- */
-async function migrateNotes(env: Env): Promise<Response> {
-  const stub = env.MilesGPT.get(env.MilesGPT.idFromName("miles"));
-
-  type Row = { id: number; text: string };
-  const { results } = await env.DB.prepare(
-    "SELECT id, text FROM notes ORDER BY id"
-  ).all<Row>();
-
-  const migrated: number[] = [];
-  for (const row of results) {
-    const path = `/notes/${row.id}.md`;
-    await stub.importNote(path, row.text);
-    migrated.push(row.id);
+  /**
+   * Companion to readNote — used by tests to seed workspace files without
+   * going through the agent loop. Kept symmetrical with readNote rather
+   * than only exposing reads, on the principle that test fixtures should
+   * be able to set up their own preconditions.
+   */
+  async writeNote(path: string, content: string): Promise<void> {
+    await this.__unsafe_ensureInitialized();
+    await this.workspace.writeFile(path, content);
   }
-
-  return Response.json({ migrated, count: migrated.length });
 }
 
 export default {
   async fetch(request, env) {
-    const url = new URL(request.url);
-
-    // Admin: one-off migration of D1 notes into the Workspace.
-    if (url.pathname === "/admin/migrate-notes" && request.method === "POST") {
-      return migrateNotes(env);
-    }
-
     // Standard Think / agents routing: handles /agents/* WebSocket + HTTP
     // chat protocol, sub-agent routing, MCP callbacks, etc.
     return (

@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { nimbusStub } from "./_helpers";
 
 /**
- * Smoke test: the MilesGPT DO can boot.
+ * Smoke test: the Nimbus DO can boot.
  *
  * Think's `onStart` does a *lot* — initialises the Workspace, builds the
  * Session, runs `configureSession`, registers session change observers,
@@ -12,7 +12,7 @@ import { nimbusStub } from "./_helpers";
  * We don't trigger a chat turn here (that would call Workers AI). We just
  * confirm the DO is reachable via RPC, which forces `onStart` to run.
  */
-describe("MilesGPT DO boot", () => {
+describe("Nimbus DO boot", () => {
   it("instantiates without throwing and answers RPC calls", async () => {
     const stub = nimbusStub();
 
@@ -28,7 +28,7 @@ describe("MilesGPT DO boot", () => {
     // Within a single test run the DO instance is the same, but this
     // confirms that the Workspace actually persists writes through Think's
     // initialization rather than being re-created on each call.
-    await stub.importNote("/test/boot-marker.txt", "hello from boot test");
+    await stub.writeNote("/test/boot-marker.txt", "hello from boot test");
     const read = await stub.readNote("/test/boot-marker.txt");
     expect(read).toBe("hello from boot test");
   });

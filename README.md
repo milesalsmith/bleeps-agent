@@ -7,7 +7,7 @@ the Cloudflare Agents SDK.
 The old milesGPT was a stateless Hono Worker that did one-shot RAG over a D1
 notes table. The new one is a persistent, durable agent called **Nimbus**
 that streams responses, remembers things across sessions, and owns its own
-filesystem of notes.
+durable filesystem.
 
 ---
 
@@ -15,10 +15,10 @@ filesystem of notes.
 
 | Concern        | Before                                       | After                                                                            |
 | -------------- | -------------------------------------------- | -------------------------------------------------------------------------------- |
-| Runtime        | Hono fetch handler                           | `MilesGPT extends Think<Env>` Durable Object                                     |
+| Runtime        | Hono fetch handler                           | `Nimbus extends Think<Env>` Durable Object                                       |
 | State          | Stateless per request                        | Per-DO SQLite + Workspace + Session message tree                                 |
 | Memory         | None                                         | `soul` (Nimbus personality) + `memory` block the model writes to via `set_context` |
-| Notes storage  | D1 `notes` table + Vectorize embeddings      | Workspace files at `/notes/<id>.md`; Nimbus uses built-in `read`/`grep`/`find` tools |
+| Note storage   | D1 `notes` table + Vectorize embeddings      | Workspace files; Nimbus uses built-in `read`/`grep`/`find` tools                 |
 | UI             | Server-rendered HTML form, one-shot Q&A      | React + `useAgentChat`, streaming over WebSocket                                 |
 | Crash safety   | None                                         | `chatRecovery = true` wraps every turn in a recoverable fiber                    |
 | Model          | `@cf/meta/llama-3-8b-instruct`               | `@cf/moonshotai/kimi-k2.6`                                                       |
@@ -36,15 +36,18 @@ miles-gpt/
 ├── package.json            # type: module; vite + think deps
 ├── tsconfig.json           # extends agents/tsconfig
 ├── vite.config.ts          # @cloudflare/vite-plugin + agents/vite + react
-├── wrangler.jsonc          # DO binding, SQLite migration, assets config
+├── wrangler.jsonc          # DO binding + SQLite migration chain + assets
 ├── env.d.ts                # typed Cloudflare.Env bindings
 ├── index.html              # entry HTML for the React app
+├── scripts/
+│   └── smoke.mjs           # live HTTP + optional WebSocket smoke test
+├── test/                   # vitest + @cloudflare/vitest-pool-workers
 └── src/
-    ├── server.ts           # MilesGPT extends Think + /admin/migrate-notes
+    ├── server.ts           # Nimbus extends Think + routeAgentRequest
     └── client/
         ├── main.tsx        # React root
-        ├── App.tsx         # useAgent + useAgentChat, Nimbus avatar + bubble
-        └── styles.css      # ported Nimbus orange look
+        ├── App.tsx         # useAgent + useAgentChat, Nimbus avatar
+        └── styles.css      # Cloudflare orange terminal look
 ```
 
 ---
@@ -64,7 +67,7 @@ npm run dev
 ```
 
 Vite + the `@cloudflare/vite-plugin` boots a local Worker, mounts the
-`MilesGPT` Durable Object on local SQLite, and serves the React client with
+`Nimbus` Durable Object on local SQLite, and serves the React client with
 HMR. By default it listens on **http://localhost:5173**.
 
 Open that URL and you'll see Nimbus. Type a question, hit **Ask**, watch the
@@ -96,7 +99,7 @@ npm run deploy
 ```
 
 This runs `vite build` and then `wrangler deploy`. The first deploy will
-create the `MilesGPT` Durable Object class and run the SQLite migration
+create the `Nimbus` Durable Object class and run the SQLite migrations
 (`v1` in `wrangler.jsonc`). You'll get a URL like
 `https://miles-gpt.<your-subdomain>.workers.dev`.
 
@@ -124,7 +127,7 @@ no auth yet, see [Roadmap](#roadmap)).
 `src/server.ts` declares:
 
 ```ts
-export class MilesGPT extends Think<Env> {
+export class Nimbus extends Think<Env> {
   chatRecovery = true;
 
   getModel() {
@@ -163,67 +166,17 @@ That is the entire agent. Think's base class wires up:
    preferences, ongoing projects, names of people you mention, etc.
    across sessions. The contents survive hibernation and restarts.
 
-### The Workspace (notes filesystem)
+### The Workspace
 
 `this.workspace` is a durable filesystem backed by the DO's SQLite. Nimbus
 sees it through the built-in workspace tools, so any question that might be
-answered by your notes — Nimbus will `grep` or `find` them itself, without
-you wiring any RAG plumbing.
+answered by something previously written down — Nimbus will `grep` or
+`find` it itself, without you wiring any RAG plumbing.
 
-Notes live at `/notes/<id>.md` (one file per note). Once migrated from D1,
-you can add more by just talking to Nimbus: "Add a note that I'm flying
-to Lisbon on the 14th" → it'll write the file itself.
-
----
-
-## Migrating your old D1 notes
-
-The `wrangler.jsonc` still has `D1` and `Vectorize` bindings, **for migration
-only**. There's a one-shot admin endpoint that reads every row out of the
-old `notes` table and writes it as a file in Nimbus's Workspace.
-
-### Run the migration
-
-After your first deploy:
-
-```bash
-curl -X POST https://miles-gpt.<your-subdomain>.workers.dev/admin/migrate-notes
-```
-
-Or locally (`npm run dev` running):
-
-```bash
-curl -X POST http://localhost:5173/admin/migrate-notes
-```
-
-You'll get back JSON like:
-
-```json
-{ "migrated": [1, 2, 3, ...], "count": 47 }
-```
-
-It's idempotent — re-running overwrites files with the same path.
-
-### Verify
-
-Open Nimbus and ask: "What notes do you have?" or "Search your notes for X."
-Nimbus will use its `find` / `grep` tools to answer.
-
-### Clean up
-
-Once you've confirmed the migration worked, delete:
-
-1. The `vectorize` and `d1_databases` blocks in `wrangler.jsonc`
-2. The `DB` and `VECTOR_INDEX` lines in `env.d.ts`
-3. The `migrateNotes` function and `/admin/migrate-notes` route in
-   `src/server.ts`
-4. The `importNote` method on `MilesGPT`
-
-Then `npm run deploy` again to ship the leaner version.
-
-> ⚠️ **Do NOT delete the Vectorize index or D1 database from your
-> Cloudflare dashboard** until you're certain the migration is good — there's
-> no easy undo.
+You add files by just talking to Nimbus: "Add a note that I'm flying to
+Lisbon on the 14th" → it'll write a file under `/notes/` itself. The
+naming/structure is the model's to organise; the only convention is that
+paths are absolute (start with `/`).
 
 ---
 
@@ -250,12 +203,20 @@ that the old milesGPT could not:
 
 In `wrangler.jsonc`:
 
-| Binding         | Type             | Used for                                           |
-| --------------- | ---------------- | -------------------------------------------------- |
-| `AI`            | Workers AI       | The kimi-k2.6 model that drives Nimbus             |
-| `MilesGPT`      | Durable Object   | The single Nimbus agent instance (SQLite-backed)   |
-| `DB`            | D1               | **TEMPORARY** — only for `/admin/migrate-notes`    |
-| `VECTOR_INDEX`  | Vectorize        | **TEMPORARY** — kept for parity, not actually read |
+| Binding   | Type           | Used for                                         |
+| --------- | -------------- | ------------------------------------------------ |
+| `AI`      | Workers AI     | The kimi-k2.6 model that drives Nimbus           |
+| `Nimbus`  | Durable Object | The single Nimbus agent instance (SQLite-backed) |
+
+### Migration chain
+
+`wrangler.jsonc` keeps the full history of DO class migrations — Cloudflare
+requires every prior tag to be present to deploy.
+
+- **v1** — created the original `MilesGPT` class (Stage 1).
+- **v2** — clean-slate rename: deleted `MilesGPT`, created `Nimbus`. Used
+  to drop test pollution from the live agent. The old class's SQLite
+  storage was wiped.
 
 ---
 
@@ -271,27 +232,23 @@ npm run smoke -- --ws  # also opens a WS, sends "ping", asserts a reply
 
 ### Layer 1 — unit tests (`test/unit/`)
 
-Pure-logic tests with no external dependencies. Currently covers the
-migration loop's contract (paths, ordering, error handling, unicode
-preservation). Run in <100ms.
+Pure-logic tests with no external dependencies. Empty right now — the
+Stage 1 migration tests that lived here were retired with the clean-slate.
+Kept as a placeholder for future pure-logic helpers (Stage 2 onwards).
 
 ### Layer 2 — integration tests (`test/integration/`)
 
-Real Worker, real `MilesGPT` Durable Object, real (local) SQLite + D1 via
+Real Worker, real `Nimbus` Durable Object, real (local) SQLite via
 [`@cloudflare/vitest-pool-workers`](https://developers.cloudflare.com/workers/testing/vitest-integration/).
 No real Workers AI — the agent loop is never triggered in tests, so no
 model credits are burned.
 
-- `migrate-notes.test.ts` — POSTs to `/admin/migrate-notes` with seeded D1
-  rows, reads files back from the agent's Workspace, asserts round-trip
-  integrity. **This is the test that protects your data.**
 - `agent-boot.test.ts` — Forces `onStart` to run, asserts the DO is
-  reachable and storage persists.
+  reachable and storage persists across RPCs.
 - `agent-tools.test.ts` — Round-trips files via the Workspace
   (write/read/overwrite/unicode/nested paths).
 
-Helpers in `test/integration/_helpers.ts` seed D1 and grab the
-single-instance DO stub.
+Helpers in `test/integration/_helpers.ts` grab the single-instance DO stub.
 
 ### Layer 3 — live smoke (`scripts/smoke.mjs`)
 
@@ -332,14 +289,9 @@ npm install`).
 You're missing `@types/node`. It's already a devDep — run `npm install`.
 
 **`wrangler deploy` rejects the migration**
-First deploy ever? Check that `wrangler.jsonc` has the `migrations` block
-with `new_sqlite_classes: ["MilesGPT"]`. If you've previously had a
-different DO class with the same name, you'll need a rename migration.
-
-**Nimbus doesn't see my migrated notes**
-Re-run `/admin/migrate-notes` and check the JSON response. Then in the
-chat ask Nimbus to `list /notes/` — it'll show you what's actually in the
-workspace.
+First deploy ever? Check that `wrangler.jsonc` has the full `migrations`
+chain — Cloudflare requires every prior tag to be present, even ones
+whose classes have since been deleted.
 
 **"WebSocket failed to connect" in the browser**
 Make sure the URL you opened matches where the Worker is actually running.

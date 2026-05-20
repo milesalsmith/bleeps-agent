@@ -9,41 +9,34 @@
 
   "assets": {
     "not_found_handling": "single-page-application",
-    // Worker handles the agent WebSocket/HTTP routes and the migration endpoint.
-    // Everything else falls through to the static React app.
-    "run_worker_first": ["/agents/*", "/admin/*"]
+    // The Worker handles the agent WebSocket/HTTP routes; everything
+    // else falls through to the static React app.
+    "run_worker_first": ["/agents/*"]
   },
 
   "durable_objects": {
     "bindings": [
       {
-        "class_name": "MilesGPT",
-        "name": "MilesGPT"
+        "class_name": "Nimbus",
+        "name": "Nimbus"
       }
     ]
   },
 
   "migrations": [
+    // v1 created the now-deleted `MilesGPT` class. Kept in history because
+    // Cloudflare requires the full migration chain to deploy.
     {
       "tag": "v1",
       "new_sqlite_classes": ["MilesGPT"]
-    }
-  ],
-
-  // Kept TEMPORARILY so the one-off /admin/migrate-notes route can read the
-  // existing notes out of D1 and into Nimbus's Workspace. Delete both
-  // bindings (and this comment) once migration has been run successfully.
-  "vectorize": [
+    },
+    // v2 — clean slate: delete the old DO class (wiping its SQLite),
+    // create the renamed `Nimbus` class fresh. This was used to drop
+    // Stage 1 test pollution from the live agent.
     {
-      "binding": "VECTOR_INDEX",
-      "index_name": "vector-index"
-    }
-  ],
-  "d1_databases": [
-    {
-      "binding": "DB",
-      "database_name": "database",
-      "database_id": "6d35ff72-fa10-4f7a-903d-40e8674bbc40"
+      "tag": "v2",
+      "deleted_classes": ["MilesGPT"],
+      "new_sqlite_classes": ["Nimbus"]
     }
   ]
 }

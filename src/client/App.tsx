@@ -3,13 +3,13 @@ import { useAgentChat } from "@cloudflare/ai-chat/react";
 import { useEffect, useRef, useState, type FormEvent } from "react";
 
 /**
- * MilesGPT client — chats with the single global `MilesGPT` DO instance
+ * milesGPT client — chats with the single global `Nimbus` DO instance
  * named `"miles"`. Streams over the agents WebSocket protocol via
  * `useAgentChat`.
  */
 export function App() {
   const agent = useAgent({
-    agent: "MilesGPT",
+    agent: "Nimbus",
     name: "miles"
   });
   const { messages, sendMessage, status } = useAgentChat({ agent });
