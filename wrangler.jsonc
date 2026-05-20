@@ -1,6 +1,6 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "miles-gpt",
+  "name": "bleeps-agent",
   "main": "src/server.ts",
   "compatibility_date": "2026-01-28",
   "compatibility_flags": ["nodejs_compat"],
@@ -17,26 +17,30 @@
   "durable_objects": {
     "bindings": [
       {
-        "class_name": "Nimbus",
-        "name": "Nimbus"
+        "class_name": "Bleeps",
+        "name": "Bleeps"
       }
     ]
   },
 
   "migrations": [
-    // v1 created the now-deleted `MilesGPT` class. Kept in history because
-    // Cloudflare requires the full migration chain to deploy.
+    // v1 — created the original `MilesGPT` class. Deleted in v2.
     {
       "tag": "v1",
       "new_sqlite_classes": ["MilesGPT"]
     },
-    // v2 — clean slate: delete the old DO class (wiping its SQLite),
-    // create the renamed `Nimbus` class fresh. This was used to drop
-    // Stage 1 test pollution from the live agent.
+    // v2 — renamed to `Nimbus`; wiped accumulated test pollution.
     {
       "tag": "v2",
       "deleted_classes": ["MilesGPT"],
       "new_sqlite_classes": ["Nimbus"]
+    },
+    // v3 — renamed to `Bleeps`; the gonimbus.ai naming collision made the
+    // earlier "Nimbus" choice less appealing.
+    {
+      "tag": "v3",
+      "deleted_classes": ["Nimbus"],
+      "new_sqlite_classes": ["Bleeps"]
     }
   ]
 }

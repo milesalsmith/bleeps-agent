@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Live smoke test for the deployed milesGPT Worker.
+ * Live smoke test for the deployed Bleeps Worker.
  *
  * Two tiers:
  *
@@ -10,7 +10,7 @@
  *        edge" without touching Workers AI.
  *
  *   npm run smoke -- --ws
- *     -- HTTP + WebSocket: also opens the agents WebSocket to the MilesGPT
+ *     -- HTTP + WebSocket: also opens the agents WebSocket to the Bleeps
  *        DO, sends a "ping" message, and waits for any streamed response
  *        chunk. Costs a handful of Workers AI tokens per run.
  *
@@ -26,7 +26,7 @@
 
 import process from "node:process";
 
-const DEFAULT_URL = "https://miles-gpt.buildaflare.workers.dev";
+const DEFAULT_URL = "https://bleeps-agent.buildaflare.workers.dev";
 const TEST_URL = process.env.TEST_URL || DEFAULT_URL;
 const WANT_WS = process.argv.includes("--ws");
 const TIMEOUT_MS = Number(process.env.SMOKE_TIMEOUT_MS || 30_000);
@@ -61,8 +61,8 @@ async function checkHttpRoot() {
   // The React entry script is what Vite emits — proves the static assets
   // pipeline is wired up, not just that *something* responded.
   assert(
-    html.includes("<title>MilesGPT</title>"),
-    "homepage HTML missing <title>MilesGPT</title> — wrong app deployed?"
+    html.includes("<title>Bleeps</title>"),
+    "homepage HTML missing <title>Bleeps</title> — wrong app deployed?"
   );
   assert(
     html.includes('id="root"'),
@@ -92,10 +92,10 @@ async function checkSpaFallback() {
 
 async function checkWebsocketChat() {
   // The agents library exposes the DO at /agents/<class-kebab>/<name>.
-  // The DO class is `Nimbus` → `nimbus`. (Single-word class names dodge
+  // The DO class is `Bleeps` → `bleeps`. (Single-word class names dodge
   // the camelCase-to-kebab pitfall that previously turned `MilesGPT` into
   // `miles-g-p-t`.) See `camelCaseToKebabCase` in node_modules/agents/dist/utils.js.
-  const wsUrl = TEST_URL.replace(/^http/, "ws") + "/agents/nimbus/miles";
+  const wsUrl = TEST_URL.replace(/^http/, "ws") + "/agents/bleeps/miles";
 
   const ws = new WebSocket(wsUrl);
 

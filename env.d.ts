@@ -4,7 +4,7 @@
 declare namespace Cloudflare {
   interface Env {
     AI: Ai;
-    Nimbus: DurableObjectNamespace<import("./src/server").Nimbus>;
+    Bleeps: DurableObjectNamespace<import("./src/server").Bleeps>;
   }
 }
 interface Env extends Cloudflare.Env {}

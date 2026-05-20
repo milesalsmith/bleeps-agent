@@ -3,13 +3,13 @@ import { useAgentChat } from "@cloudflare/ai-chat/react";
 import { useEffect, useRef, useState, type FormEvent } from "react";
 
 /**
- * milesGPT client — chats with the single global `Nimbus` DO instance
+ * Bleeps client — chats with the single global `Bleeps` DO instance
  * named `"miles"`. Streams over the agents WebSocket protocol via
  * `useAgentChat`.
  */
 export function App() {
   const agent = useAgent({
-    agent: "Nimbus",
+    agent: "Bleeps",
     name: "miles"
   });
   const { messages, sendMessage, status } = useAgentChat({ agent });
@@ -38,17 +38,17 @@ export function App() {
       <div className="robot-container">
         <img
           src="https://imagedelivery.net/qbHoVdIXIMS_AVA5AS-tUw/ee79919f-44ac-4d00-5506-2fa1770fca00/public"
-          alt="Nimbus"
+          alt="Bleeps"
           className="robot-img"
         />
       </div>
 
-      <h1>Welcome to Nimbus</h1>
+      <h1>Just ask Bleeps</h1>
 
       <div className="messages" ref={messagesRef}>
         {messages.length === 0 && (
           <div className="empty">
-            Ask Nimbus anything. He remembers across sessions.
+            Bleeps remembers across sessions. Ask anything.
           </div>
         )}
         {messages.map((msg) => (
@@ -77,7 +77,7 @@ export function App() {
       </form>
 
       <div className="status">
-        {status === "streaming" && "Nimbus is thinking…"}
+        {status === "streaming" && "Bleeps is thinking…"}
         {status === "submitted" && "Sending…"}
         {status === "error" && "Something went wrong. Try again."}
       </div>

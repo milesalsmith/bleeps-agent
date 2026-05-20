@@ -1,52 +1,61 @@
-# milesGPT — Nimbus on Project Think
+# Bleeps — a personal AI agent on Cloudflare Project Think
 
-A rebuild of the original milesGPT Worker on top of [Cloudflare Project
-Think](https://blog.cloudflare.com/project-think/) — the next generation of
-the Cloudflare Agents SDK.
+A small, friendly AI assistant called **Bleeps**, built on top of
+[Cloudflare Project Think](https://blog.cloudflare.com/project-think/) —
+the next generation of the Cloudflare Agents SDK.
 
-The old milesGPT was a stateless Hono Worker that did one-shot RAG over a D1
-notes table. The new one is a persistent, durable agent called **Nimbus**
-that streams responses, remembers things across sessions, and owns its own
-durable filesystem.
+Bleeps streams responses, remembers things across sessions, and owns its
+own durable filesystem of notes. It runs as a single Durable Object that
+hibernates when idle (zero cost) and wakes on message.
+
+**Live:** https://bleeps-agent.buildaflare.workers.dev
+
+> **Project history.** This project started as "milesGPT" — a stateless
+> Hono Worker doing one-shot RAG over D1. The Project Think rebuild was
+> originally called "Nimbus" until I noticed the [gonimbus.ai](https://gonimbus.ai/)
+> collision; the agent is now called **Bleeps**. The git history, the v1/v2
+> migration tags in `wrangler.jsonc`, and the journal entry under
+> [`docs/journal/`](./docs/journal/) all carry the older names — that's
+> intentional, history shouldn't lie.
 
 ---
 
-## What changed (one-screen summary)
+## What's under the hood
 
-| Concern        | Before                                       | After                                                                            |
-| -------------- | -------------------------------------------- | -------------------------------------------------------------------------------- |
-| Runtime        | Hono fetch handler                           | `Nimbus extends Think<Env>` Durable Object                                       |
-| State          | Stateless per request                        | Per-DO SQLite + Workspace + Session message tree                                 |
-| Memory         | None                                         | `soul` (Nimbus personality) + `memory` block the model writes to via `set_context` |
-| Note storage   | D1 `notes` table + Vectorize embeddings      | Workspace files; Nimbus uses built-in `read`/`grep`/`find` tools                 |
-| UI             | Server-rendered HTML form, one-shot Q&A      | React + `useAgentChat`, streaming over WebSocket                                 |
-| Crash safety   | None                                         | `chatRecovery = true` wraps every turn in a recoverable fiber                    |
-| Model          | `@cf/meta/llama-3-8b-instruct`               | `@cf/moonshotai/kimi-k2.6`                                                       |
-| Language       | JavaScript                                   | TypeScript                                                                       |
+| Concern        | Implementation                                                                |
+| -------------- | ----------------------------------------------------------------------------- |
+| Runtime        | `Bleeps extends Think<Env>` Durable Object                                    |
+| State          | Per-DO SQLite + Workspace + Session message tree                              |
+| Memory         | `soul` (personality) + `memory` block the model writes to via `set_context`   |
+| Note storage   | Workspace files; Bleeps uses built-in `read`/`grep`/`find` tools              |
+| UI             | React + `useAgentChat`, streaming over WebSocket                              |
+| Crash safety   | `chatRecovery = true` wraps every turn in a recoverable fiber                 |
+| Model          | `@cf/moonshotai/kimi-k2.6`                                                    |
+| Language       | TypeScript                                                                    |
 
-This is "Stage 1" of a larger plan. See [Roadmap](#roadmap) at the bottom for
-what comes next.
+This is "Stage 1" of a larger plan. See [Roadmap](#roadmap) at the bottom.
 
 ---
 
 ## Project layout
 
 ```
-miles-gpt/
+bleeps-agent/
 ├── package.json            # type: module; vite + think deps
 ├── tsconfig.json           # extends agents/tsconfig
 ├── vite.config.ts          # @cloudflare/vite-plugin + agents/vite + react
 ├── wrangler.jsonc          # DO binding + SQLite migration chain + assets
 ├── env.d.ts                # typed Cloudflare.Env bindings
 ├── index.html              # entry HTML for the React app
+├── docs/journal/           # build history
 ├── scripts/
 │   └── smoke.mjs           # live HTTP + optional WebSocket smoke test
 ├── test/                   # vitest + @cloudflare/vitest-pool-workers
 └── src/
-    ├── server.ts           # Nimbus extends Think + routeAgentRequest
+    ├── server.ts           # Bleeps extends Think + routeAgentRequest
     └── client/
         ├── main.tsx        # React root
-        ├── App.tsx         # useAgent + useAgentChat, Nimbus avatar
+        ├── App.tsx         # useAgent + useAgentChat
         └── styles.css      # Cloudflare orange terminal look
 ```
 
@@ -67,17 +76,17 @@ npm run dev
 ```
 
 Vite + the `@cloudflare/vite-plugin` boots a local Worker, mounts the
-`Nimbus` Durable Object on local SQLite, and serves the React client with
+`Bleeps` Durable Object on local SQLite, and serves the React client with
 HMR. By default it listens on **http://localhost:5173**.
 
-Open that URL and you'll see Nimbus. Type a question, hit **Ask**, watch the
-response stream in token-by-token.
+Open that URL and you'll see Bleeps. Type a question, hit **Ask**, watch
+the response stream in token-by-token.
 
 ### 3. Typecheck / build
 
 ```bash
-npx tsc --noEmit    # typecheck only
-npm run build       # build worker + client into dist/
+npm run typecheck     # tsc --noEmit
+npm run build         # bundle worker + client into dist/
 ```
 
 ---
@@ -99,9 +108,9 @@ npm run deploy
 ```
 
 This runs `vite build` and then `wrangler deploy`. The first deploy will
-create the `Nimbus` Durable Object class and run the SQLite migrations
-(`v1` in `wrangler.jsonc`). You'll get a URL like
-`https://miles-gpt.<your-subdomain>.workers.dev`.
+create the `Bleeps` Durable Object class and run the SQLite migrations
+(`v1`, `v2`, `v3` in `wrangler.jsonc`). You'll get a URL like
+`https://bleeps-agent.<your-subdomain>.workers.dev`.
 
 ### Custom domain (optional)
 
@@ -109,16 +118,16 @@ Add a `routes` block to `wrangler.jsonc`:
 
 ```jsonc
 "routes": [
-  { "pattern": "nimbus.example.com/*", "zone_name": "example.com" }
+  { "pattern": "bleeps.example.com/*", "zone_name": "example.com" }
 ]
 ```
 
 ---
 
-## How Nimbus actually works
+## How Bleeps actually works
 
 There is **one global Durable Object instance** named `"miles"`. Every
-browser session talks to the same DO, so Nimbus's memory and notes are
+browser session talks to the same DO, so Bleeps's memory and notes are
 shared across devices (and across people who can reach the URL — there's
 no auth yet, see [Roadmap](#roadmap)).
 
@@ -127,7 +136,7 @@ no auth yet, see [Roadmap](#roadmap)).
 `src/server.ts` declares:
 
 ```ts
-export class Nimbus extends Think<Env> {
+export class Bleeps extends Think<Env> {
   chatRecovery = true;
 
   getModel() {
@@ -138,7 +147,7 @@ export class Nimbus extends Think<Env> {
 
   configureSession(session: Session) {
     return session
-      .withContext("soul",   { provider: { get: async () => NIMBUS_SOUL } })
+      .withContext("soul",   { provider: { get: async () => BLEEPS_SOUL } })
       .withContext("memory", { description: "...", maxTokens: 2000 })
       .withCachedPrompt();
   }
@@ -158,41 +167,40 @@ That is the entire agent. Think's base class wires up:
 
 ### Two context blocks
 
-1. **`soul`** — Nimbus's personality and operating instructions. Static.
-   Defined in `NIMBUS_SOUL` at the top of `src/server.ts`. Edit that string
-   to change how Nimbus talks.
+1. **`soul`** — Bleeps's personality and operating instructions. Static.
+   Defined in `BLEEPS_SOUL` at the top of `src/server.ts`. Edit that
+   string to change how Bleeps talks.
 2. **`memory`** — a 2000-token scratchpad the **model writes to itself**
-   using the `set_context` tool. This is how Nimbus remembers your
+   using the `set_context` tool. This is how Bleeps remembers your
    preferences, ongoing projects, names of people you mention, etc.
    across sessions. The contents survive hibernation and restarts.
 
 ### The Workspace
 
-`this.workspace` is a durable filesystem backed by the DO's SQLite. Nimbus
-sees it through the built-in workspace tools, so any question that might be
-answered by something previously written down — Nimbus will `grep` or
+`this.workspace` is a durable filesystem backed by the DO's SQLite. Bleeps
+sees it through the built-in workspace tools, so any question that might
+be answered by something previously written down — Bleeps will `grep` or
 `find` it itself, without you wiring any RAG plumbing.
 
-You add files by just talking to Nimbus: "Add a note that I'm flying to
+You add files by just talking to Bleeps: "Add a note that I'm flying to
 Lisbon on the 14th" → it'll write a file under `/notes/` itself. The
 naming/structure is the model's to organise; the only convention is that
 paths are absolute (start with `/`).
 
 ---
 
-## Using Nimbus day-to-day
+## Using Bleeps day-to-day
 
-Once it's running, you just talk to it. Some examples of things it can do
-that the old milesGPT could not:
+Once it's running, you just talk to it. Some examples:
 
-- **"Remember that I prefer responses under 100 words."** — Nimbus will
-  call `set_context` on its memory block. Next session, that preference is
-  still there.
-- **"Add a note: dentist appointment Tuesday at 10."** — Nimbus writes a
+- **"Remember that I prefer responses under 100 words."** — Bleeps will
+  call `set_context` on its memory block. Next session, that preference
+  is still there.
+- **"Add a note: dentist appointment Tuesday at 10."** — Bleeps writes a
   new file into `/notes/`.
-- **"What did I write down about the React migration?"** — Nimbus
-  `grep`s the workspace for "React" and summarises the matches.
-- **"Edit my Lisbon note and change the date to the 16th."** — Nimbus
+- **"What did I write down about the React migration?"** — Bleeps `grep`s
+  the workspace for "React" and summarises the matches.
+- **"Edit my Lisbon note and change the date to the 16th."** — Bleeps
   reads the file, edits it, saves it back.
 - **Refresh the page mid-response.** — The stream resumes from where it
   was, because `chatRecovery = true`.
@@ -205,8 +213,8 @@ In `wrangler.jsonc`:
 
 | Binding   | Type           | Used for                                         |
 | --------- | -------------- | ------------------------------------------------ |
-| `AI`      | Workers AI     | The kimi-k2.6 model that drives Nimbus           |
-| `Nimbus`  | Durable Object | The single Nimbus agent instance (SQLite-backed) |
+| `AI`      | Workers AI     | The kimi-k2.6 model that drives Bleeps           |
+| `Bleeps`  | Durable Object | The single Bleeps agent instance (SQLite-backed) |
 
 ### Migration chain
 
@@ -215,18 +223,19 @@ requires every prior tag to be present to deploy.
 
 - **v1** — created the original `MilesGPT` class (Stage 1).
 - **v2** — clean-slate rename: deleted `MilesGPT`, created `Nimbus`. Used
-  to drop test pollution from the live agent. The old class's SQLite
-  storage was wiped.
+  to drop test pollution from the live agent.
+- **v3** — renamed `Nimbus` → `Bleeps` after the gonimbus.ai naming
+  collision. Storage wiped again; fresh start.
 
 ---
 
 ## Testing
 
-A Stage-1 testing framework runs in three layers, fast to slow:
+A three-layer testing framework, fast to slow:
 
 ```bash
-npm test           # unit + integration, ~10s, $0
-npm run smoke      # HTTP smoke against live deploy, ~1s, $0
+npm test               # unit + integration, ~10s, $0
+npm run smoke          # HTTP smoke against live deploy, ~1s, $0
 npm run smoke -- --ws  # also opens a WS, sends "ping", asserts a reply
 ```
 
@@ -238,7 +247,7 @@ Kept as a placeholder for future pure-logic helpers (Stage 2 onwards).
 
 ### Layer 2 — integration tests (`test/integration/`)
 
-Real Worker, real `Nimbus` Durable Object, real (local) SQLite via
+Real Worker, real `Bleeps` Durable Object, real (local) SQLite via
 [`@cloudflare/vitest-pool-workers`](https://developers.cloudflare.com/workers/testing/vitest-integration/).
 No real Workers AI — the agent loop is never triggered in tests, so no
 model credits are burned.
@@ -309,18 +318,18 @@ product.
 - **Stage 2 — Smarter workspace.** Add semantic search back as an optional
   tool. Reorganise notes into folders. Wire R2 for large-file spillover.
 - **Stage 3 — Codemode.** Add `@cloudflare/codemode` + Dynamic Workers so
-  Nimbus writes a single JS program to answer multi-step questions instead
+  Bleeps writes a single JS program to answer multi-step questions instead
   of chaining 20 tool calls. Big efficiency win.
 - **Stage 4 — Execution ladder.** Optional browser (Browser Run) and
   sandbox (Cloudflare Sandbox) tiers, plus sub-agents (e.g. a `Researcher`
   facet) for parallel work.
 - **Stage 5 — Self-authored extensions.** Hook up the `ExtensionManager`
-  so Nimbus can write its own tools at runtime (e.g. a Google Calendar
+  so Bleeps can write its own tools at runtime (e.g. a Google Calendar
   integration on first use) and persist them.
 
 Also worth adding whenever it bites:
 
-- **Auth.** Currently anyone with the URL can talk to Nimbus and see your
+- **Auth.** Currently anyone with the URL can talk to Bleeps and see your
   notes. A GitHub OAuth gate (like the upstream Think `assistant` example
   uses) is straightforward. Then the DO name becomes the user login
   instead of the hardcoded `"miles"`.

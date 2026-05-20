@@ -1,6 +1,6 @@
 {
-  "name": "miles-gpt",
-  "description": "Nimbus, the milesGPT assistant — rebuilt on Cloudflare Project Think",
+  "name": "bleeps-agent",
+  "description": "Bleeps — a personal AI assistant built on Cloudflare Project Think",
   "private": true,
   "type": "module",
   "version": "1.0.0",

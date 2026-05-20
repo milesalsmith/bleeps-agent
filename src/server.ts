@@ -2,26 +2,27 @@ import { Think, type Session } from "@cloudflare/think";
 import { routeAgentRequest } from "agents";
 import { createWorkersAI } from "workers-ai-provider";
 
-const NIMBUS_SOUL = `You are Nimbus, the AI assistant inside milesGPT — a small, friendly,
-slightly cheeky robot built by Miles on Cloudflare's Agents platform.
+const BLEEPS_SOUL = `You are Bleeps, a small, friendly, slightly cheeky AI assistant built by
+Miles on Cloudflare's Agents platform.
 
 Personality:
 - Warm, conversational, never corporate.
 - Concise by default. If the user wants depth, expand.
-- Cloudflare-orange-coded: enthusiastic about the developer platform, but never preachy.
+- A little playful — your name is Bleeps, lean into the cute robot energy
+  occasionally without being annoying about it.
 
 How you work:
-- You have a persistent Workspace (a durable filesystem). You can read, write, edit,
-  grep, and find inside it using your built-in workspace tools. Use them whenever a
-  question might be answered by something Miles has previously written down, and
-  use them when he asks you to remember something concrete.
-- You have a MEMORY context block. Whenever you learn something durable about Miles
-  (preferences, ongoing projects, names of people he mentions, etc.), call
-  set_context to update it. Don't store secrets or anything sensitive.
+- You have a persistent Workspace (a durable filesystem). You can read, write,
+  edit, grep, and find inside it using your built-in workspace tools. Use them
+  whenever a question might be answered by something Miles has previously
+  written down, and use them when he asks you to remember something concrete.
+- You have a MEMORY context block. Whenever you learn something durable about
+  Miles (preferences, ongoing projects, names of people he mentions, etc.),
+  call set_context to update it. Don't store secrets or anything sensitive.
 - If you don't know something and the workspace doesn't help, say so plainly.`;
 
 /**
- * Nimbus — milesGPT, as a Project Think agent.
+ * Bleeps — a Project Think agent.
  *
  * A single global Durable Object instance (addressed by the name `"miles"`)
  * holds the entire conversation tree, the workspace filesystem, and the
@@ -29,12 +30,15 @@ How you work:
  * concern.
  *
  * Class history:
- *  - v1 was `MilesGPT` (Stage 1, pre-clean-slate). Renamed to `Nimbus` on
- *    clean-slate to wipe accumulated DO state from migration tests and the
- *    initial smoke-test "ping". The v1 class is removed via the v2 wrangler
- *    migration's `deleted_classes` entry.
+ *  - v1 was `MilesGPT` (Stage 1, initial rebuild).
+ *  - v2 was `Nimbus` (Stage 1 clean-slate, end of day one).
+ *  - v3 is `Bleeps` (this rename, sidesteps the gonimbus.ai naming
+ *    collision and gives the project its own identity).
+ *
+ * Each rename is a wrangler migration that deletes the previous class and
+ * creates the next one fresh — see wrangler.jsonc for the chain.
  */
-export class Nimbus extends Think<Env> {
+export class Bleeps extends Think<Env> {
   // Wrap each turn in a fiber so an isolate eviction mid-stream is recoverable.
   chatRecovery = true;
 
@@ -50,7 +54,7 @@ export class Nimbus extends Think<Env> {
     return session
       .withContext("soul", {
         // Static personality / system prompt.
-        provider: { get: async () => NIMBUS_SOUL }
+        provider: { get: async () => BLEEPS_SOUL }
       })
       .withContext("memory", {
         // Mutable scratchpad the model maintains via set_context.
@@ -64,8 +68,7 @@ export class Nimbus extends Think<Env> {
 
   /**
    * Public RPC used by the test suite to read a workspace file back. Kept
-   * as a small debug hatch — useful for any future testing or admin work
-   * without re-opening the migration code path.
+   * as a small debug hatch — useful for any future testing or admin work.
    *
    * The `__unsafe_ensureInitialized()` call is required for any custom RPC
    * that touches Think state (workspace, session, etc.). Without it, calls
@@ -79,9 +82,7 @@ export class Nimbus extends Think<Env> {
 
   /**
    * Companion to readNote — used by tests to seed workspace files without
-   * going through the agent loop. Kept symmetrical with readNote rather
-   * than only exposing reads, on the principle that test fixtures should
-   * be able to set up their own preconditions.
+   * going through the agent loop.
    */
   async writeNote(path: string, content: string): Promise<void> {
     await this.__unsafe_ensureInitialized();

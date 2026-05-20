@@ -8,10 +8,10 @@ import { env } from "cloudflare:test";
  */
 
 /**
- * Get an RPC stub for the single `"miles"` Nimbus DO instance — the same
+ * Get an RPC stub for the single `"miles"` Bleeps DO instance — the same
  * instance the deployed app talks to. Storage is local to the test pool
  * (your live deployment is unaffected).
  */
-export function nimbusStub() {
-  return env.Nimbus.get(env.Nimbus.idFromName("miles"));
+export function bleepsStub() {
+  return env.Bleeps.get(env.Bleeps.idFromName("miles"));
 }
