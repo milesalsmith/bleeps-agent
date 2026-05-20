@@ -259,6 +259,68 @@ In `wrangler.jsonc`:
 
 ---
 
+## Testing
+
+A Stage-1 testing framework runs in three layers, fast to slow:
+
+```bash
+npm test           # unit + integration, ~10s, $0
+npm run smoke      # HTTP smoke against live deploy, ~1s, $0
+npm run smoke -- --ws  # also opens a WS, sends "ping", asserts a reply
+```
+
+### Layer 1 — unit tests (`test/unit/`)
+
+Pure-logic tests with no external dependencies. Currently covers the
+migration loop's contract (paths, ordering, error handling, unicode
+preservation). Run in <100ms.
+
+### Layer 2 — integration tests (`test/integration/`)
+
+Real Worker, real `MilesGPT` Durable Object, real (local) SQLite + D1 via
+[`@cloudflare/vitest-pool-workers`](https://developers.cloudflare.com/workers/testing/vitest-integration/).
+No real Workers AI — the agent loop is never triggered in tests, so no
+model credits are burned.
+
+- `migrate-notes.test.ts` — POSTs to `/admin/migrate-notes` with seeded D1
+  rows, reads files back from the agent's Workspace, asserts round-trip
+  integrity. **This is the test that protects your data.**
+- `agent-boot.test.ts` — Forces `onStart` to run, asserts the DO is
+  reachable and storage persists.
+- `agent-tools.test.ts` — Round-trips files via the Workspace
+  (write/read/overwrite/unicode/nested paths).
+
+Helpers in `test/integration/_helpers.ts` seed D1 and grab the
+single-instance DO stub.
+
+### Layer 3 — live smoke (`scripts/smoke.mjs`)
+
+Runs against the actual deployed Worker. The cheap mode (`npm run smoke`)
+does HTTP only — fast, free, catches "the deploy is broken". The `--ws`
+mode opens a real WebSocket and sends `"ping"`, asserting any chunk
+streams back within 30s. That last mode does burn a small amount of
+Workers AI credit per run, so don't put it in a tight loop.
+
+Override the target URL via `TEST_URL`:
+
+```bash
+TEST_URL=http://localhost:5173 npm run smoke        # against vite dev
+TEST_URL=https://staging.example.com npm run smoke  # against a branch deploy
+```
+
+### The standard loop
+
+1. Make a change.
+2. `npm test` — catches regressions in seconds.
+3. `npm run deploy` — pushes to Cloudflare.
+4. `npm run smoke -- --ws` — proves the deployed version actually works.
+5. `git commit && git push`.
+
+If any step fails, fix before moving on. The whole point is to refuse to
+push code that's quietly broken.
+
+---
+
 ## Troubleshooting
 
 **`npm install` fails on `@cloudflare/think`**

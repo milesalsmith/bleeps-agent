@@ -60,9 +60,25 @@ export class MilesGPT extends Think<Env> {
    * Public RPC used by the one-off /admin/migrate-notes endpoint to seed
    * Nimbus's workspace with the legacy D1 notes. Safe to remove once the
    * migration has been run.
+   *
+   * The `__unsafe_ensureInitialized()` call is required for any custom RPC
+   * that touches Think state (workspace, session, etc.). Without it, calls
+   * that arrive before Think's async `onStart` has run see undefined fields
+   * and throw — this caught us in the integration tests.
    */
   async importNote(path: string, content: string): Promise<void> {
+    await this.__unsafe_ensureInitialized();
     await this.workspace.writeFile(path, content);
+  }
+
+  /**
+   * Public RPC used by the test suite to read a workspace file back. Kept
+   * outside `importNote` so it can stay around after the migration is
+   * retired — useful for any future debugging too.
+   */
+  async readNote(path: string): Promise<string | null> {
+    await this.__unsafe_ensureInitialized();
+    return (await this.workspace.readFile(path)) ?? null;
   }
 }
 
