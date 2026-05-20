@@ -1,0 +1,49 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "miles-gpt",
+  "main": "src/server.ts",
+  "compatibility_date": "2026-01-28",
+  "compatibility_flags": ["nodejs_compat"],
+
+  "ai": { "binding": "AI" },
+
+  "assets": {
+    "not_found_handling": "single-page-application",
+    // Worker handles the agent WebSocket/HTTP routes and the migration endpoint.
+    // Everything else falls through to the static React app.
+    "run_worker_first": ["/agents/*", "/admin/*"]
+  },
+
+  "durable_objects": {
+    "bindings": [
+      {
+        "class_name": "MilesGPT",
+        "name": "MilesGPT"
+      }
+    ]
+  },
+
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_sqlite_classes": ["MilesGPT"]
+    }
+  ],
+
+  // Kept TEMPORARILY so the one-off /admin/migrate-notes route can read the
+  // existing notes out of D1 and into Nimbus's Workspace. Delete both
+  // bindings (and this comment) once migration has been run successfully.
+  "vectorize": [
+    {
+      "binding": "VECTOR_INDEX",
+      "index_name": "vector-index"
+    }
+  ],
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "database",
+      "database_id": "6d35ff72-fa10-4f7a-903d-40e8674bbc40"
+    }
+  ]
+}

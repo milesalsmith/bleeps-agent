@@ -1,0 +1,5 @@
+{
+  "extends": "agents/tsconfig",
+  "include": ["src/**/*.ts", "src/**/*.tsx", "env.d.ts"],
+  "exclude": ["node_modules", "dist", ".wrangler"]
+}
