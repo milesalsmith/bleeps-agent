@@ -15,7 +15,6 @@ export function App() {
   const { messages, sendMessage, status } = useAgentChat({ agent });
 
   const [input, setInput] = useState("");
-  const [bubbleOpen, setBubbleOpen] = useState(true);
   const messagesRef = useRef<HTMLDivElement>(null);
 
   // Auto-scroll the message list as new chunks stream in.
@@ -42,14 +41,6 @@ export function App() {
           alt="Nimbus"
           className="robot-img"
         />
-        {bubbleOpen && (
-          <div className="speech-bubble">
-            <p>Hi, I'm Nimbus! How can I help you today?</p>
-            <button type="button" onClick={() => setBubbleOpen(false)}>
-              Close
-            </button>
-          </div>
-        )}
       </div>
 
       <h1>Welcome to Nimbus</h1>
